@@ -6,16 +6,28 @@ const flash = require('connect-flash')
 const config = require('config-lite')(__dirname)
 const routes = require('./routes')
 const pkg = require('./package')
+const fs = require('fs')
+
+const winston = require('winston')
+const expressWinston = require('express-winston')
 
 const app = express()
 
-// 设置模板目录
-app.set('views', path.join(__dirname, 'views'))
-// 设置模板引擎为 ejs
-app.set('view engine', 'ejs')
+// // 设置模板目录
+// app.set('views', path.join(__dirname, 'views'))
+// // 设置模板引擎为 ejs
+// app.set('view engine', 'ejs')
 
-// 设置静态文件目录
-app.use(express.static(path.join(__dirname, 'public')))
+// // 设置静态文件目录
+// app.use(express.static(path.join(__dirname, 'public')))
+
+// 服务开启后访问指定编译好的dist文件下的数据
+app.use(express.static(path.resolve(__dirname, './web/dist')))
+app.get('*', function(req, res) {
+    const html = fs.readFileSync(path.resolve(__dirname, './web/dist/index.html'), 'utf-8')
+    res.send(html)
+})
+
 // session 中间件
 app.use(session({
   name: config.session.key, // 设置 cookie 中保存 session id 的字段名称
@@ -52,8 +64,38 @@ app.use(function (req, res, next) {
   next()
 })
 
+// 正常请求的日志
+app.use(expressWinston.logger({
+  transports: [
+    new (winston.transports.Console)({
+      json: true,
+      colorize: true
+    }),
+    new winston.transports.File({
+      filename: 'logs/success.log'
+    })
+  ]
+}))
 // 路由
 routes(app)
+// 错误请求的日志
+app.use(expressWinston.errorLogger({
+  transports: [
+    new winston.transports.Console({
+      json: true,
+      colorize: true
+    }),
+    new winston.transports.File({
+      filename: 'logs/error.log'
+    })
+  ]
+}))
+
+app.use(function (err, req, res, next) {
+  console.error(err)
+  req.flash('error', err.message)
+  res.redirect('/posts')
+})
 
 // 监听端口，启动程序
 app.listen(config.port, function () {
